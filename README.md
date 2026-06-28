@@ -390,3 +390,71 @@ run_tool_call.py    # 3 тест-кейса
 
 **Тест Г:** пограничный случай — модель попыталась вызвать tool с `sku='samsung'` (без конкретного артикула). Товар не найден, но система не упала — вернула корректное сообщение и предложила уточнить запрос.
 
+### Лог выполнения
+
+**Тест А — tool вызван:**
+INPUT: Есть ли у вас iPhone 15 128GB чёрного цвета?
+
+TOOL CALLED: check_stock | ARGS: {'sku': 'iphone15-128gb-black'}
+
+TOOL RESULT: {"found": true, "qty": 5, "price": 89990}
+
+FINAL ANSWER: Да, у нас есть iPhone 15 128GB чёрного цвета. В наличии 5 штук, цена 89 990 руб.
+
+TOTAL TOKENS: 519
+
+**Тест Б — tool вызван:**
+INPUT: Сколько стоит доставка MacBook Air M2 в Новосибирск?
+
+TOOL CALLED: calculate_delivery | ARGS: {'sku': 'macbook-air-m2-256', 'region': 'Новосибирск'}
+
+TOOL RESULT: {"days": "4-5", "cost": 299}
+
+FINAL ANSWER: Доставка MacBook Air M2 256GB в Новосибирск стоит 299 рублей и займёт 4-5 дней.
+
+TOTAL TOKENS: 538
+
+**Тест В — tool НЕ вызван:**
+INPUT: Как оформить возврат товара?
+
+NO TOOL CALLED
+
+FINAL ANSWER: Для оформления возврата обратитесь в службу поддержки...
+
+TOKENS: 305
+
+**Тест Г — пограничный:**
+INPUT: Хочу купить Samsung, подскажите что есть в наличии?
+
+TOOL CALLED: check_stock | ARGS: {'sku': 'samsung'}
+
+TOOL RESULT: {"found": false, "message": "Товар 'samsung' не найден"}
+
+FINAL ANSWER: К сожалению, товаров Samsung нет. Уточните артикул.
+
+TOTAL TOKENS: 462
+
+## ДЗ 3.2: Архитектурный паспорт проекта
+
+### Что реализовано
+Файл `docs/architecture.md` — архитектурный паспорт ИИ-консультанта ТехноМаркет:
+
+- **Диаграмма компонентов** — 4 слоя (Gateway → Service → LLM → Data) с Mermaid
+- **ADR-001** — обоснование выбора Request-Response паттерна
+- **ADR-002** — стратегия fault tolerance (OpenAI → OpenRouter → Ollama + Circuit Breaker)
+- **Таблица точек отказа** — стратегия деградации для каждого слоя
+- **LiteLLM** — анализ и обоснование решения реализовать fallback самостоятельно
+
+### Как проверить
+Открыть файл [docs/architecture.md](docs/architecture.md) в репозитории — GitHub автоматически отрендерит Mermaid-диаграмму и таблицы.
+
+### Нагрузочные характеристики
+
+| Параметр | Значение |
+|----------|----------|
+| Запросов в день | 600 |
+| RPM в пике | ~20 |
+| Бюджет API | $3.5/месяц |
+| Целевой cache hit rate | 40–60% |
+
+
