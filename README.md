@@ -483,3 +483,33 @@ TOTAL TOKENS: 462
 При concurrency=5 ускорение x3.4, при concurrency=10 — x6.2, что превышает минимальный
 порог x4-5 из критериев задания. Параллельная обработка запросов критически важна
 при реальной нагрузке магазина: вместо 43 секунд на 20 запросов — всего 7 секунд.
+
+## ДЗ 3.4: FastAPI-сервис для LLM
+
+### Что реализовано
+HTTP-сервис на FastAPI (`app/main.py`) — production-структура с DI и кешем:
+
+- **POST /chat** — синхронный запрос, валидация через Pydantic, ответ с `cached: bool`
+- **POST /chat/stream** — стриминг через StreamingResponse (SSE)
+- **GET /health** — всегда 200, даже если Redis недоступен
+- **GET /models** — список моделей с ценами
+- **LLMService** (`app/services/llm.py`) — кеш через Redis, fallback без кеша
+- **DI** (`app/deps/providers.py`) — Depends для OpenAI, Redis, LLMService
+- **Middleware** — логирование request_id, duration_ms, X-Request-ID заголовок
+- **Обработчики ошибок** — 429/502/504 для LLM ошибок, единый формат 422
+
+### Результаты проверки
+curl -X POST http://localhost:8000/chat 
+
+-H "Content-Type: application/json" 
+
+-d '{"messages":[{"role":"user","content":"Есть ли iPhone 15 в наличии?"}]}'
+→ {"content":"...","model":"gpt-4o-mini","usage":{"total_tokens":95},"cached":false}
+curl http://localhost:8000/health
+
+→ {"status":"ok"}
+
+### Swagger
+Документация доступна на `http://localhost:8000/docs` — все эндпоинты с примерами запросов.
+
+
