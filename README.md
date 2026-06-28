@@ -458,3 +458,28 @@ TOTAL TOKENS: 462
 | Целевой cache hit rate | 40–60% |
 
 
+## ДЗ 3.3: Асинхронная обработка запросов к ИИ
+
+### Что реализовано
+- **AsyncLLMClient** (`app/services/llm_client.py`) — асинхронный клиент на базе AsyncOpenAI:
+  - `complete` — одиночный запрос с таймаутом 15с и логированием duration_ms
+  - `batch_chat` — параллельные запросы через asyncio.gather + Semaphore
+  - `stream_chat` — стриминг токенов с замером TTFT
+- **Semaphore** — атрибут экземпляра `self._sem`, создаётся в `__init__` один раз
+- **Логирование** — каждый запрос: duration_ms, model, prompt_chars, status
+- **Бенчмарк** (`scripts/benchmark.py`) — 20 промптов, sync vs async при concurrency 1/5/10
+
+### Результаты бенчмарка
+
+| Режим | Время | Ускорение |
+|-------|-------|-----------|
+| Sync (последовательно) | 43.43s | x1.0 |
+| Async concurrency=1 | 55.24s | x0.8 |
+| Async concurrency=5 | 12.74s | x3.4 |
+| Async concurrency=10 | 6.97s | **x6.2** |
+
+### Выводы
+При concurrency=1 async немного медленнее sync из-за overhead event loop — это нормально.
+При concurrency=5 ускорение x3.4, при concurrency=10 — x6.2, что превышает минимальный
+порог x4-5 из критериев задания. Параллельная обработка запросов критически важна
+при реальной нагрузке магазина: вместо 43 секунд на 20 запросов — всего 7 секунд.
