@@ -14,25 +14,20 @@ from app.core.config import get_settings
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError
 from app.observability.logging import setup_logging
 from app.routers import chat, health
+from app.chat import routes as chat_routes
 
-# Настройка логирования
 setup_logging()
 logger = structlog.get_logger("llm-service")
 
 
-# ============================
-# LIFESPAN
-# ============================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-
     app.state.openai = AsyncOpenAI(
         api_key=settings.openai_api_key.get_secret_value(),
         timeout=settings.request_timeout,
         max_retries=3,
     )
-
     try:
         import redis.asyncio as aioredis
         app.state.cache = aioredis.from_url(
@@ -43,18 +38,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("redis_unavailable", error=str(e))
         app.state.cache = None
-
     yield
-
     await app.state.openai.close()
     if app.state.cache:
         await app.state.cache.aclose()
     logger.info("service_stopped")
 
 
-# ============================
-# ПРИЛОЖЕНИЕ
-# ============================
 settings = get_settings()
 
 app = FastAPI(
@@ -64,7 +54,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -75,38 +64,28 @@ app.add_middleware(
 )
 
 
-# ============================
-# MIDDLEWARE
-# ============================
 @app.middleware("http")
 async def logging_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex[:12])
     request.state.request_id = request_id
-
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(
         request_id=request_id,
         path=request.url.path,
         method=request.method,
     )
-
     start = time.perf_counter()
     response = await call_next(request)
     duration_ms = (time.perf_counter() - start) * 1000
-
     logger.info(
         "http_request",
         status=response.status_code,
         duration_ms=round(duration_ms, 2),
     )
-
     response.headers["X-Request-ID"] = request_id
     return response
 
 
-# ============================
-# ОБРАБОТЧИКИ ОШИБОК
-# ============================
 @app.exception_handler(LLMError)
 async def llm_error_handler(request: Request, exc: LLMError):
     if isinstance(exc, LLMRateLimitError):
@@ -132,8 +111,6 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     return JSONResponse(status_code=422, content={"errors": errors})
 
 
-# ============================
-# РОУТЕРЫ
-# ============================
 app.include_router(chat.router)
 app.include_router(health.router)
+app.include_router(chat_routes.router)
