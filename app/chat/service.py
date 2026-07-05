@@ -29,7 +29,10 @@ class ChatService:
         )
 
     async def send_message(
-        self, chat_id: UUID, user_content: str
+        self,
+        chat_id: UUID,
+        user_content: str,
+        media_part: dict | None = None,
     ) -> AsyncIterator[str]:
         # 1. Сохраняем сообщение пользователя
         user_msg = ChatMessage(
@@ -43,13 +46,25 @@ class ChatService:
         chat = await self.repo.get_chat(chat_id)
         history = await self.repo.list_messages(chat_id, limit=CHAT_CONTEXT_WINDOW)
 
-        # 3. Строим messages для LLM (sliding window)
+        # 3. Строим messages для LLM
         system_prompt = (chat.system_prompt if chat else None) or SYSTEM_PROMPT_DEFAULT
         messages = [{"role": "system", "content": system_prompt}]
-        for msg in history:
+
+        for msg in history[:-1]:  # все кроме последнего
             messages.append({"role": msg.role, "content": msg.content})
 
-        # 4. Стримим ответ от LLM
+        # 4. Последнее сообщение — с медиа если есть
+        if media_part:
+            last_content = [
+                {"type": "text", "text": user_content},
+                media_part,
+            ]
+        else:
+            last_content = user_content
+
+        messages.append({"role": "user", "content": last_content})
+
+        # 5. Стримим ответ от LLM
         full_response = []
         stream = await self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -63,7 +78,7 @@ class ChatService:
                 full_response.append(token)
                 yield token
 
-        # 5. Сохраняем ответ ассистента
+        # 6. Сохраняем ответ ассистента
         assistant_content = "".join(full_response)
         assistant_msg = ChatMessage(
             chat_id=chat_id,
