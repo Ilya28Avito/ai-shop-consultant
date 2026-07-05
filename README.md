@@ -538,3 +538,51 @@ docker images llm-service:v1
 Сервис полностью контейнеризован — одна команда `docker compose up -d --build`
 поднимает весь стек. Образ весит 279MB благодаря multi-stage сборке и slim-базе.
 Redis подключён и доступен внутри Docker-сети. Non-root пользователь обеспечивает безопасность.
+
+## ДЗ 3.6: Observability ИИ-приложений
+
+### Что реализовано
+- **structlog** (`app/observability/logging.py`) — JSON-логи с полями `request_id`, `model`, `tokens`, `latency_ms`
+- **PII-маскирование** (`app/observability/pii.py`) — маскировка email, телефонов, карт, ИНН, паспортов
+- **Логирование LLM-запросов** — `prompt_hash` и `prompt_preview` без сырых персональных данных
+- **Pytest-тесты** (`tests/test_pii.py`) — 5 тестов на корректность маскирования
+
+### Результаты тестов
+pytest tests/test_pii.py -v
+tests/test_pii.py::test_email_redacted        PASSED
+tests/test_pii.py::test_phone_redacted        PASSED
+tests/test_pii.py::test_card_redacted         PASSED
+tests/test_pii.py::test_multiple_pii_redacted PASSED
+tests/test_pii.py::test_clean_text_unchanged  PASSED
+5 passed in 0.04s
+
+### Пример JSON-лога
+```json
+{
+  "event": "llm_request_completed",
+  "model": "gpt-4o-mini",
+  "input_tokens": 21,
+  "output_tokens": 51,
+  "latency_ms": 2341.5,
+  "finish_reason": "stop",
+  "prompt_hash": "sha256:a1b2c3d4e5f6",
+  "prompt_preview": "Мой email [EMAIL], есть ли iPhone 15?"
+}
+```
+
+### PII-маскирование
+| Тип | До | После |
+|-----|-----|-------|
+| Email | `ivan@mail.ru` | `[EMAIL]` |
+| Телефон | `+7 (999) 123-45-67` | `[PHONE_RU]` |
+| Карта | `4111 1111 1111 1111` | `[CARD]` |
+
+### Выводы
+PII-маскирование работает корректно — все 5 тестов прошли. В логах вместо
+реального email `ivan@mail.ru` появляется `[EMAIL]`, телефоны и карты также
+маскируются. Сырые персональные данные никогда не попадают в логи —
+только хеш промпта и замаскированный превью первых 120 символов.
+structlog пишет структурированные JSON-логи с `request_id` на каждый запрос,
+что позволяет легко искать и анализировать цепочки вызовов.
+
+
