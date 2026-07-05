@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form, File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -30,13 +30,26 @@ async def create_chat(body: CreateChatIn, service: ChatServiceDep) -> CreateChat
 
 
 @router.post("/{chat_id}/messages", summary="Отправить сообщение (стриминг)")
-async def send_message(chat_id: UUID, body: dict, service: ChatServiceDep):
-    content = body.get("content", "")
-    if not content:
-        raise HTTPException(status_code=400, detail="content is required")
+async def send_message(
+    chat_id: UUID,
+    service: ChatServiceDep,
+    content: str = Form(...),
+    media: UploadFile | None = File(None),
+):
+    """Принимает текст и опциональный медиафайл через multipart/form-data."""
+
+    media_part = None
+    if media and media.filename:
+        try:
+            from app.chat.media import media_to_part
+            media_part = await media_to_part(media)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     async def generate():
-        async for chunk in service.send_message(chat_id, content):
+        async for chunk in service.send_message(
+            chat_id, content, media_part=media_part
+        ):
             yield f"data: {chunk}\n\n"
         yield "data: [DONE]\n\n"
 
