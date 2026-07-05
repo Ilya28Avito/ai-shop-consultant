@@ -512,4 +512,29 @@ curl http://localhost:8000/health
 ### Swagger
 Документация доступна на `http://localhost:8000/docs` — все эндпоинты с примерами запросов.
 
+## ДЗ 3.5: Docker и контейнеризация
 
+### Что реализовано
+- **Dockerfile** — multi-stage сборка (builder + runtime), non-root пользователь `appuser` (uid=1000)
+- **.dockerignore** — исключены `.env`, `.git`, `__pycache__`, `.venv`
+- **compose.yaml** — два сервиса: `app` + `redis:7.4-alpine` с healthcheck-ами
+- **/ready эндпоинт** — readiness probe: проверяет доступность Redis
+- **Named volume** `redis_data` — данные Redis сохраняются между перезапусками
+
+### Результаты проверки
+docker compose up -d --build
+→ ✔ Container ai-shop-redis-1  Healthy
+→ ✔ Container ai-shop-app-1    Started
+curl http://localhost:8000/health
+→ {"status":"ok"}
+curl http://localhost:8000/ready
+→ {"status":"ok","redis":"up"}
+docker compose exec app id
+→ uid=1000(appuser) gid=1000(appuser)
+docker images llm-service:v1
+→ 279MB (цель <500MB ✅)
+
+### Выводы
+Сервис полностью контейнеризован — одна команда `docker compose up -d --build`
+поднимает весь стек. Образ весит 279MB благодаря multi-stage сборке и slim-базе.
+Redis подключён и доступен внутри Docker-сети. Non-root пользователь обеспечивает безопасность.
