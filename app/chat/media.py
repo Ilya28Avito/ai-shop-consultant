@@ -1,7 +1,9 @@
 import base64
+import tempfile
+import os
+import subprocess
 from io import BytesIO
 from fastapi import UploadFile
-import os
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
@@ -14,7 +16,6 @@ async def media_to_part(media: UploadFile) -> dict:
     mime = media.content_type or ""
     data = await media.read()
 
-    # Изображение → image_url part
     if mime.startswith("image/"):
         b64 = base64.b64encode(data).decode()
         return {
@@ -22,22 +23,19 @@ async def media_to_part(media: UploadFile) -> dict:
             "image_url": {"url": f"data:{mime};base64,{b64}"}
         }
 
-    # Голос → Whisper → text part
     if mime.startswith("audio/") or mime == "application/ogg":
-        transcript = await whisper_transcribe(data, media.filename or "audio.ogg")
+        transcript = await whisper_transcribe(data)
         return {
             "type": "text",
             "text": f"[пользователь сказал голосом]:\n{transcript}"
         }
 
-    # PDF → text part
     if mime == "application/pdf":
         return {
             "type": "text",
             "text": f"[документ PDF]:\n{extract_pdf_text(data)[:30_000]}"
         }
 
-    # DOCX → text part
     if mime.endswith("wordprocessingml.document"):
         return {
             "type": "text",
@@ -47,15 +45,33 @@ async def media_to_part(media: UploadFile) -> dict:
     raise ValueError(f"Unsupported media type: {mime}")
 
 
-async def whisper_transcribe(audio_bytes: bytes, filename: str) -> str:
-    """Транскрибирует аудио через Whisper-1."""
-    f = BytesIO(audio_bytes)
-    f.name = filename
-    result = await client.audio.transcriptions.create(
-        model="whisper-1",
-        file=f,
-    )
-    return result.text
+async def whisper_transcribe(audio_bytes: bytes) -> str:
+    """Транскрибирует аудио через Whisper-1 с конвертацией через ffmpeg."""
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
+        tmp_ogg.write(audio_bytes)
+        tmp_ogg_path = tmp_ogg.name
+
+    tmp_mp3_path = tmp_ogg_path.replace(".ogg", ".mp3")
+
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", tmp_ogg_path, tmp_mp3_path],
+            capture_output=True, check=True
+        )
+
+        with open(tmp_mp3_path, "rb") as f:
+            mp3_data = f.read()
+
+        result = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=("voice.mp3", mp3_data, "audio/mpeg"),
+        )
+        return result.text
+    finally:
+        if os.path.exists(tmp_ogg_path):
+            os.unlink(tmp_ogg_path)
+        if os.path.exists(tmp_mp3_path):
+            os.unlink(tmp_mp3_path)
 
 
 def extract_pdf_text(data: bytes) -> str:
