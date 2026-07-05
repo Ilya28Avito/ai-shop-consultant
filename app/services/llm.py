@@ -1,13 +1,18 @@
 import hashlib
 import json
 import logging
+import time
 from typing import AsyncIterator
+
+import structlog
 from openai import AsyncOpenAI, RateLimitError, APITimeoutError, AuthenticationError
+
 from app.core.config import Settings
 from app.core.exceptions import LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMError
+from app.observability.pii import redact_pii, prompt_hash
 from app.schemas.chat import ChatRequest, ChatResponse, ChatDelta, Usage
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LLMService:
@@ -24,15 +29,20 @@ class LLMService:
 
     async def complete(self, req: ChatRequest) -> ChatResponse:
         cache_key = self._make_cache_key(req)
+
         if self.cache:
             try:
                 cached = await self.cache.get(cache_key)
                 if cached:
-                    logger.info(f"Cache hit: {cache_key[:20]}...")
+                    logger.info("cache_hit", cache_key=cache_key[:20])
                     return ChatResponse.model_validate_json(cached)
             except Exception as e:
-                logger.warning(f"Cache read error: {e}")
+                logger.warning("cache_read_error", error=str(e))
+
         model = req.model or self.settings.default_model
+        raw_prompt = req.messages[-1].content if req.messages else ""
+
+        start = time.perf_counter()
         try:
             response = await self.openai.chat.completions.create(
                 model=model,
@@ -48,7 +58,22 @@ class LLMService:
             raise LLMAuthError(str(e))
         except Exception as e:
             raise LLMError(str(e))
+
+        latency_ms = (time.perf_counter() - start) * 1000
         result = ChatResponse.from_openai(response, cached=False)
+
+        # Логируем без PII
+        logger.info(
+            "llm_request_completed",
+            model=result.model,
+            input_tokens=result.usage.prompt_tokens,
+            output_tokens=result.usage.completion_tokens,
+            latency_ms=round(latency_ms, 2),
+            finish_reason=result.finish_reason,
+            prompt_hash=prompt_hash(raw_prompt),
+            prompt_preview=redact_pii(raw_prompt)[:120],
+        )
+
         if self.cache:
             try:
                 await self.cache.setex(
@@ -57,7 +82,8 @@ class LLMService:
                     result.model_dump_json(),
                 )
             except Exception as e:
-                logger.warning(f"Cache write error: {e}")
+                logger.warning("cache_write_error", error=str(e))
+
         return result
 
     async def stream(self, req: ChatRequest):
