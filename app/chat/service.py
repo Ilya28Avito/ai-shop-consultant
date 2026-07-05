@@ -8,7 +8,9 @@ from app.chat.domain import Chat, ChatMessage
 from app.chat.repository import ChatRepository
 
 CHAT_CONTEXT_WINDOW = int(os.getenv("CHAT_CONTEXT_WINDOW", "10"))
-SYSTEM_PROMPT_DEFAULT = "Ты ИИ-консультант интернет-магазина ТехноМаркет. Отвечай только по теме магазина."
+SYSTEM_PROMPT_DEFAULT = """Ты — ИИ-консультант интернет-магазина ТехноМаркет.
+Отвечай только по теме магазина. Используй контекст из базы знаний если он предоставлен.
+Если информации нет — честно скажи что не знаешь."""
 
 
 class ChatService:
@@ -46,14 +48,26 @@ class ChatService:
         chat = await self.repo.get_chat(chat_id)
         history = await self.repo.list_messages(chat_id, limit=CHAT_CONTEXT_WINDOW)
 
-        # 3. Строим messages для LLM
+        # 3. RAG — находим релевантные документы
+        rag_context = ""
+        try:
+            from app.rag.retriever import retrieve
+            chunks = await retrieve(user_content, k=3)
+            if chunks:
+                rag_context = "\n\nКонтекст из базы знаний магазина:\n" + "\n---\n".join(chunks)
+        except Exception:
+            pass
+
+        # 4. Строим messages для LLM
         system_prompt = (chat.system_prompt if chat else None) or SYSTEM_PROMPT_DEFAULT
+        if rag_context:
+            system_prompt = system_prompt + rag_context
+
         messages = [{"role": "system", "content": system_prompt}]
 
-        for msg in history[:-1]:  # все кроме последнего
+        for msg in history[:-1]:
             messages.append({"role": msg.role, "content": msg.content})
 
-        # 4. Последнее сообщение — с медиа если есть
         if media_part:
             last_content = [
                 {"type": "text", "text": user_content},
