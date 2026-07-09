@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 3600
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8000"]
 
+    # Qdrant
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str | None = None
+    qdrant_collection: str = "documents"
+    embedding_dim: int = 1536
+
     model_config = {
         "env_file": ".env_robust_23",
         "env_file_encoding": "utf-8",
