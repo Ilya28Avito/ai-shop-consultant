@@ -819,5 +819,41 @@ RAG позволяет консультанту отвечать на основ
 зрения покупателя это логично.
 
 
+## ДЗ 5.2: Векторные базы данных — Qdrant
 
+### Что реализовано
+- **Qdrant в docker-compose** — сервис `qdrant/qdrant:v1.14.0` с named volume и healthcheck
+- **VectorStore** (`app/services/vector_store.py`) — async обёртка с методами `upsert`, `search`, `ensure_collection`
+- **54 документа** загружены в коллекцию `documents` (7 категорий: return, payment, delivery, warranty, catalog, support, loyalty)
+- **Payload индексы** — `source` (KEYWORD), `created_at` (DATETIME), `category` (KEYWORD)
+- **Cosine vs Dot** — сравнение на 5 запросах, все совпали
+- **3 примера фильтрации** — match, datetime range, must+must_not
+
+### Результаты
+python scripts/load_to_qdrant.py
+✅ Коллекция 'documents' создана
+✅ Готово! Точек в коллекции: 54
+python scripts/embeddings/cosine_vs_dot.py
+✅ Все результаты совпали!
+💡 Оставляем COSINE в production
+python scripts/embeddings/filters_demo.py
+📌 Фильтр 1 (category=return): [0.539] Вернуть товар можно в течение 14 дней...
+📌 Фильтр 2 (последние 30 дней): все документы свежие
+📌 Фильтр 3 (catalog без promo): iPhone 15 Pro, iPhone 15 256GB, MacBook Air M2
+
+### Dashboard
+Qdrant dashboard доступен на `http://localhost:6333/dashboard`
+
+### Документация
+Подробная документация в `docs/vector_store.md`
+
+#### Выводы
+Qdrant успешно интегрирован в docker-compose рядом с Redis.
+54 документа загружены идемпотентно — повторный запуск не создаёт дубли
+благодаря детерминированным UUID5 идентификаторам.
+OpenAI эмбеддинги нормализованы — Cosine и Dot дают идентичное ранжирование,
+оставляем COSINE как стандарт для семантического поиска.
+Фильтрация по payload позволяет искать документы конкретной категории,
+свежие документы или исключать определённые источники — это ключевой
+паттерн для production RAG систем.
 
