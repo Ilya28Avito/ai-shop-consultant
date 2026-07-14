@@ -15,6 +15,7 @@ from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError
 from app.observability.logging import setup_logging
 from app.routers import chat, health
 from app.chat import routes as chat_routes
+from app.routers import rag as rag_router
 
 setup_logging()
 logger = structlog.get_logger("llm-service")
@@ -114,3 +115,4 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(chat_routes.router)
+app.include_router(rag_router.router)
