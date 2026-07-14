@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+openai
+pydantic-settings
+redis
+httpx
+python-dotenv
+tenacity
+jinja2
