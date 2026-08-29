@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 from app.core.config import get_settings
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError
 from app.observability.logging import setup_logging
+from app.observability.tracing import register_tracing
 from app.routers import chat, health
 from app.chat import routes as chat_routes
 from app.routers import rag as rag_router
@@ -39,6 +40,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("redis_unavailable", error=str(e))
         app.state.cache = None
+
+    # ДЗ 5.6, шаг 5 — регистрация Phoenix-трейсинга. Опционально: если
+    # PHOENIX_COLLECTOR_ENDPOINT не задан в .env_robust_23, тихо выключено
+    # (см. app/observability/tracing.py).
+    if register_tracing():
+        logger.info("tracing_enabled")
+    else:
+        logger.info("tracing_disabled", reason="PHOENIX_COLLECTOR_ENDPOINT not set")
+
     yield
     await app.state.openai.close()
     if app.state.cache:

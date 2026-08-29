@@ -7,11 +7,18 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
+      # ДЗ 5.6, шаг 5 — внутри docker-сети сервисы видят друг друга по имени
+      # сервиса, а не localhost (та же логика, что уже есть для REDIS_URL/
+      # QDRANT_URL выше). Вне compose (локальный запуск через uvicorn на
+      # хосте) в .env_robust_23 нужен http://localhost:6006.
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006
     depends_on:
       redis:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+      phoenix:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
@@ -45,6 +52,22 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # ДЗ 5.6, шаг 5 — Phoenix: UI + приём трейсов по OTLP/HTTP на том же порту
+  # (v1/traces под 6006), плюс OTLP/gRPC на 4317 (не используем — экспортер
+  # в app/observability/tracing.py настроен на HTTP, но порт пробрасываем
+  # на случай, если пригодится другой клиент).
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    volumes:
+      - phoenix_data:/mnt/data
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+    restart: unless-stopped
+
 volumes:
   redis_data: {}
   qdrant_storage: {}
+  phoenix_data: {}

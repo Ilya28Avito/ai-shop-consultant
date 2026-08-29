@@ -1,0 +1,17 @@
+{
+  "label": "baseline",
+  "generated_at": "2026-08-29T15:55:36",
+  "golden_dataset": "D:\\ai-shop\\tests\\eval\\golden_dataset.json",
+  "n_rows": 33,
+  "n_failed_rows": 0,
+  "judge_model": "gpt-4o-mini",
+  "judge_provider": "openai",
+  "judge_embedding_model": "text-embedding-3-small",
+  "avg_rag_latency_ms": 1324.4,
+  "avg_total_latency_ms": 17497.6,
+  "has_citation_avg": 0.6667,
+  "faithfulness_avg": 0.6636,
+  "answer_relevancy_avg": 0.5248,
+  "context_precision_avg": 0.751,
+  "context_recall_avg": 0.8995
+}

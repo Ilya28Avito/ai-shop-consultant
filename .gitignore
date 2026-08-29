@@ -3,3 +3,5 @@ var/
 __pycache__/
 *.pyc
 .pytest_cache/
+.env_robust_23
+.venv-eval/

@@ -7,3 +7,5 @@ httpx
 python-dotenv
 tenacity
 jinja2
+structlog
+qdrant-client

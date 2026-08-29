@@ -1,0 +1,26 @@
+# ДЗ 5.6, шаг 5 — зависимости для Phoenix-трейсинга.
+# Установка (в ОСНОВНОЕ окружение проекта, НЕ в .venv-eval!):
+#   pip install -r requirements-tracing.txt
+#
+# ВАЖНО, отличие от методички: задание описывает LlamaIndexInstrumentor,
+# но прод-RAG этого проекта (app/services/rag.py) не использует LlamaIndex —
+# это сырой Qdrant + OpenAI SDK (см. находку в requirements-eval.txt / шаге 3
+# ДЗ 5.6: генерация в answer() берёт контекст из 200-симв. сниппетов).
+# LlamaIndexInstrumentor в таком стеке не перехватил бы вообще ничего —
+# трейсы были бы пустыми. Вместо него — openinference-instrumentation-openai,
+# который инструментирует реально используемый openai SDK (эмбеддинг вопроса
+# и генерацию ответа). Ретрив в Qdrant готового инструментатора не имеет —
+# для него ручной span в app/observability/tracing.py / app/services/rag.py.
+# Подробности и обоснование — в app/observability/tracing.py.
+#
+# Раньше здесь стоял пин >=3,<4 из методички на openinference-instrumentation-
+# llama-index — устарел (на PyPI только 4.x), и сам пакет больше не нужен
+# при таком выборе инструментатора.
+#
+# Эти три пакета — чистый Python (universal py3-none-any wheels), проверено
+# на совместимость с Python 3.14 отдельно (в отличие от ragas/scikit-network
+# из requirements-eval.txt) — ставить прямо в основное окружение проекта
+# (то же самое, что requirements.txt), не нужен отдельный venv на 3.11/3.12.
+openinference-instrumentation-openai
+opentelemetry-sdk
+opentelemetry-exporter-otlp

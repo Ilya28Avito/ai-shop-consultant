@@ -1,0 +1,41 @@
+# ДЗ 5.6 — зависимости для оценки качества RAG (RAGAS).
+# Эти пакеты нужны ТОЛЬКО для прогона eval, в проде (Docker-образ приложения) не ставятся.
+# Установка:  pip install -r requirements-eval.txt
+#
+# Пины важны, не убирай:
+# - ragas<0.5 — 0.5 меняет API коллекций метрик (см. RAGAS: миграция v0.3 -> v0.4 в референсах ДЗ)
+# - langchain-community<0.4 — ragas 0.4.x тянет его в ядре, а в свежих 0.4.x сломан путь импорта
+#   (без пина `import ragas` падает на langchain_community.chat_models.vertexai)
+#
+# Судья выбран gpt-4o-mini (провайдер openai) — Anthropic-ключ не нужен, `anthropic` в зависимости
+# не добавляем. Если позже судью сменят на claude-*, вернуть `anthropic>=0.40`.
+#
+# arize-phoenix (полный пакет) сюда НЕ кладём: сервер Phoenix поднимается отдельным
+# контейнером в docker-compose (см. requirements-tracing.txt для отправки трейсов),
+# а полный pip-пакет тянет scikit-network/UMAP для встроенной кластеризации embeddings —
+# требует C++-компилятор, которого может не быть на машине, и нам не нужен.
+# Лёгкие arize-phoenix-client / arize-phoenix-evals — отдельно, на шаге 9 (опционально).
+ragas>=0.4,<0.5
+langchain-community<0.4
+pandas>=2
+# rapidfuzz — не задекларирован как обязательная зависимость ragas, но testset generation
+# (OverlapScoreBuilder, построение knowledge graph) падает без него на импорте.
+rapidfuzz
+
+# --- шаг 3: scripts/run_eval.py импортирует app.services.rag (прод-модуль),
+# поэтому eval-окружению нужны его рантайм-зависимости — без этого будет
+# ModuleNotFoundError на `from app.services.rag import evaluate_inputs`.
+# Версии не пиним — берём то же самое, что уже стоит в requirements.txt.
+qdrant-client
+python-dotenv
+
+# --- шаг 9 (опционально): scripts/hallucination_eval.py, Phoenix
+# HallucinationEvaluator на живых трейсах. ВАЖНО: методичка описывает
+# px.Client().get_spans_dataframe() — этот класс убран в Phoenix v14
+# (апрель 2026, см. release notes arize.com); актуальный путь —
+# phoenix.client.Client (из arize-phoenix-client) + phoenix.evals /
+# phoenix.evals.metrics.HallucinationEvaluator (из arize-phoenix-evals).
+# Оба пакета лёгкие (без scikit-network/UMAP, в отличие от полного
+# arize-phoenix — см. комментарий выше).
+arize-phoenix-client
+arize-phoenix-evals

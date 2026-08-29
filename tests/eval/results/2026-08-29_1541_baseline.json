@@ -1,0 +1,15 @@
+{
+  "label": "baseline",
+  "generated_at": "2026-08-29T15:41:39",
+  "golden_dataset": "D:\\ai-shop\\tests\\eval\\golden_dataset.json",
+  "n_rows": 33,
+  "n_failed_rows": 0,
+  "judge_model": "gpt-4o-mini",
+  "judge_provider": "openai",
+  "judge_embedding_model": "text-embedding-3-small",
+  "avg_latency_ms": 1921.4,
+  "faithfulness_avg": null,
+  "answer_relevancy_avg": null,
+  "context_precision_avg": null,
+  "context_recall_avg": null
+}
