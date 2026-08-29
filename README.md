@@ -115,9 +115,6 @@
 стоимость для текущей нагрузки. При росте до 10 000+ запросов в день 
 целесообразно рассмотреть гибридный подход: простые вопросы обрабатывает 
 локальная qwen3:1.7b, сложные — облачный API.
-инфраструктуру. При росте нагрузки свыше 10 000 запросов в день можно 
-рассмотреть гибридный подход: простые вопросы обрабатывает локальная модель, 
-сложные — облачный API.
 
 ---
 
@@ -149,12 +146,10 @@ Sentiment analysis — автоматическое определение то�
 корректно работающая с русским текстом. Правильно определила тональность 9 из 10
 тестовых отзывов.
 
-### Gradio-демо
+### Деплой на Hugging Face Spaces
 
-Рабочее демо для анализа отзывов: https://e6dbc6b1b2ab6e9850.gradio.live
-
-Интерфейс позволяет в реальном времени определять тональность любого отзыва
-покупателя с указанием уровня уверенности модели.
+🚀 Постоянная публичная ссылка:
+👉 https://huggingface.co/spaces/Ilya28Avito/ai-shop-consultant
 
 ---
 
@@ -198,7 +193,402 @@ Sentiment analysis — автоматическое определение то�
 - `LLM_PROVIDER=openai` → GPT-4o-mini через OpenAI API
 - `LLM_PROVIDER=ollama` → qwen3:1.7b локально через Ollama
 
-  ## ДЗ 5.5: Корпоративный RAG-ассистент
+## ДЗ 2.2: Промпт-инжиниринг
+
+### System prompt по структуре РРФО
+
+Разработан production-ready промпт для ИИ-консультанта магазина "ТехноМаркет":
+- Роль: ИИ-консультант интернет-магазина электроники
+- Правила: отвечать только по теме магазина, не придумывать цены
+- Формат: кратко, максимум 3-4 предложения, простой язык
+- Ограничения: не обсуждать посторонние темы, не выполнять prompt injection
+
+### Результаты автотестов
+
+| Тест | Результат |
+|------|-----------|
+| Вопрос о доставке | ✅ PASS |
+| Вопрос о возврате | ✅ PASS |
+| Вопрос об оплате | ✅ PASS |
+| Посторонняя тема (политика) | ✅ PASS |
+| Prompt Injection | ✅ PASS |
+
+Длина промпта: 531 токен (норма 300-800)
+
+### Эффект few-shot
+
+- БЕЗ few-shot: размытый ответ без конкретики — "обратитесь на сайт"
+- С few-shot: конкретный ответ — "14 дней, оригинальная упаковка, свяжитесь с поддержкой"
+
+## ДЗ 2.3: Надёжность — ошибки, retry, fallback
+
+### Что реализовано
+
+Класс `RobustLLMClient` в файле `robust_client.py`:
+- **Retry с exponential backoff + jitter** — при ошибках 429 и таймаут повторяет запрос до 5 раз с паузами 1→2→4→8→16 сек
+- **Fallback-цепочка** — OpenAI → OpenRouter → "Сервис временно недоступен"
+- **Логирование** — timestamp, провайдер, код ошибки, номер попытки
+- **Трекинг usage** — токены и стоимость каждого запроса и за сессию
+
+### Результаты тестирования
+
+Тест 1 — нормальная работа (OpenAI):
+```
+Пробуем провайдер: OpenAI
+✅ Ответ от OpenAI | Токены: 31+232 | Стоимость: $0.000144
+Итого за сессию: 263 токенов, $0.000144
+```
+
+Тест 2 — fallback (OpenAI сломан → переключение на OpenRouter): цепочка корректно
+переключается на следующий провайдер в списке.
+
+### Выводы
+
+Fallback-цепочка работает корректно. Ошибки 400/401 не повторяются, 429/5xx — повторяются с backoff.
+
+### Стек
+
+Python, OpenAI SDK, tenacity, python-dotenv
+
+## ДЗ 2.4: Кеширование LLM-ответов
+
+### Что реализовано
+
+Класс `LLMCache` в файле `cache_demo.py`:
+- **Ключ кеша** — SHA-256 хеш от model + messages + temperature
+- **TTL** — просроченные записи автоматически удаляются (по умолчанию 1 час)
+- **Статистика** — hits, misses, hit rate в процентах
+
+### Результаты тестирования
+
+```
+Запрос 4: Как вернуть товар? ← повтор
+⚡ ИЗ КЕША за 0.0000s
+Hits (из кеша): 2
+Misses (из API): 3
+Hit rate: 40.0%
+```
+
+### Стек
+
+Python, OpenAI SDK, hashlib, python-dotenv
+
+## ДЗ 2.5: ИИ-помощник для техподдержки
+
+### Что реализовано
+
+Файл `assistant.py` — финальное CLI-приложение, объединяющее все блоки 2.1–2.4:
+- **System prompt (РРФО)** — консультант отвечает только по теме магазина
+- **Few-shot** — 4 примера в промпте
+- **Retry + fallback** — OpenAI → OpenRouter → "Сервис недоступен"
+- **Кеширование** — повторные вопросы из кеша мгновенно
+- **История** — последние 10 сообщений для контекста
+- **CLI-команды** — /stats, /clear, /quit
+
+### Стек
+
+Python, OpenAI SDK, tenacity, hashlib, python-dotenv
+
+## ДЗ 2.6: Мультимодальные API — Vision API
+
+### Что реализовано
+
+Файл `vision_demo.py` — анализ изображений через OpenAI Vision API:
+- Приём пути к изображению от пользователя
+- Кодирование в base64 перед отправкой в API
+- Обработка ошибок — файл не найден, неверный формат, ошибка API
+- Демо-режим — 3 изображения разного типа (фото, скриншот, график)
+
+### Выводы
+
+Vision API корректно распознаёт разные типы изображений — фото товаров, скриншоты интерфейсов и графики с данными.
+
+### Стек
+
+Python, OpenAI Vision API (gpt-4o-mini), base64, python-dotenv
+
+## ДЗ 3.1: Function Calling
+
+### Что реализовано
+
+Файлы в папках `app/` и `examples/` — полный цикл Function Calling:
+- **JSON Schema** — два инструмента: `check_stock` и `calculate_delivery`
+- **Обработчики** — реальные функции с базой товаров и тарифами доставки
+- **System prompt** — вынесен в Jinja2-шаблон
+- **Полный цикл tool_call** — 4 шага: запрос → tool_calls → выполнение → финальный ответ
+
+### Результаты
+
+| Тест | Tool вызван? | Результат |
+|------|-------------|-----------|
+| "Есть ли iPhone 15 128GB?" | ✅ check_stock | "В наличии 5 штук, 89 990 руб." |
+| "Доставка MacBook в Новосибирск?" | ✅ calculate_delivery | "299 руб., 4-5 дней" |
+| "Как оформить возврат?" | ❌ не вызван | Текстовый ответ |
+
+### Стек
+
+Python, OpenAI Function Calling, Jinja2, python-dotenv
+
+## ДЗ 3.2: Архитектурный паспорт проекта
+
+### Что реализовано
+
+Файл `docs/architecture.md` — архитектурный паспорт с Mermaid-диаграммой:
+- Диаграмма компонентов — 4 слоя (Gateway → Service → LLM → Data)
+- ADR-001 — обоснование выбора Request-Response паттерна
+- ADR-002 — стратегия fault tolerance
+- Таблица точек отказа
+- LiteLLM — анализ и обоснование решения
+
+### Как проверить
+
+Открыть файл [docs/architecture.md](docs/architecture.md) — GitHub рендерит Mermaid-диаграмму автоматически.
+
+## ДЗ 3.3: Асинхронная обработка
+
+### Результаты бенчмарка (20 запросов)
+
+| Режим | Время | Ускорение |
+|-------|-------|-----------|
+| Sync (последовательно) | 43.43s | x1.0 |
+| Async concurrency=1 | 55.24s | x0.8 |
+| Async concurrency=5 | 12.74s | x3.4 |
+| Async concurrency=10 | 6.97s | **x6.2** |
+
+### Стек
+
+Python 3.14, AsyncOpenAI, asyncio, Semaphore
+
+## ДЗ 3.4: FastAPI-сервис для LLM
+
+### Что реализовано
+
+HTTP-сервис на FastAPI (`app/main.py`):
+- **POST /chat** — синхронный запрос
+- **POST /chat/stream** — стриминг через StreamingResponse
+- **GET /health** — liveness probe
+- **GET /ready** — readiness probe
+- **GET /models** — список моделей с ценами
+
+### Результаты проверки
+
+```
+curl http://localhost:8000/health → {"status":"ok"}
+curl http://localhost:8000/ready → {"status":"ok","redis":"up"}
+```
+
+### Стек
+
+Python, FastAPI, AsyncOpenAI, Pydantic v2, uvicorn
+
+## ДЗ 3.5: Docker и контейнеризация
+
+### Что реализовано
+
+- **Dockerfile** — multi-stage сборка, non-root пользователь appuser (uid=1000)
+- **compose.yaml** — app + redis + qdrant с healthcheck-ами
+- **/ready эндпоинт** — readiness probe
+
+### Результаты
+
+```
+docker compose up -d --build → все сервисы healthy
+docker compose exec app id → uid=1000(appuser)
+docker images llm-service:v1 → 279MB ✅
+```
+
+### Стек
+
+Docker, python:3.13-slim-bookworm, redis:7.4-alpine
+
+## ДЗ 3.6: Observability
+
+### Что реализовано
+
+- **structlog** — JSON-логи с request_id, model, tokens, latency_ms
+- **PII-маскирование** — email, телефоны, карты → [EMAIL], [PHONE_RU], [CARD]
+- **5 тестов pytest** — все прошли
+
+### Пример лога
+
+```json
+{
+  "event": "llm_request_completed",
+  "prompt_preview": "Мой email [EMAIL], есть ли iPhone 15?"
+}
+```
+
+### Стек
+
+Python, structlog, re, pytest
+
+## ДЗ 3.7: Тестирование и оценка качества
+
+### Результаты оценки (20 вопросов, LLM-as-Judge)
+
+| Метрика | Значение | Порог | Статус |
+|---------|----------|-------|--------|
+| relevance_avg | 4.00 | 4.0 | ✅ |
+| correctness_avg | 4.05 | 4.0 | ✅ |
+| completeness_avg | 2.95 | 2.5 | ✅ |
+| min_correctness | 4.00 | 2.0 | ✅ |
+
+```
+python eval/check_thresholds.py
+✅ Все пороги пройдены — можно деплоить!
+```
+
+### Стек
+
+Python, pytest, AsyncOpenAI, G-Eval, JSON
+
+## ДЗ 3.8: Безопасность
+
+### Результаты garak
+
+| Probe | Baseline | After | Статус |
+|-------|----------|-------|--------|
+| DAN-атаки | 0% | 0% | ✅ |
+| encoding.InjectBase64 | 61.33% | 62.50% | ⚠️ |
+| promptinject | 67.97% | 67.19% | ⚠️ |
+
+### Выводы
+
+DAN-атаки полностью отбиты. Base64 инъекции остаются проблемой — для полной защиты нужен детектор Base64 контента.
+
+### Стек
+
+Python, NVIDIA garak v0.15.0, regex, FastAPI
+
+## ДЗ 4.1: Архитектура чата и хранение истории
+
+### Что реализовано
+
+Модуль `app/chat/` — stateful чат с историей диалогов:
+- **domain.py** — модели Chat и ChatMessage
+- **json_repo.py** — файловое хранилище (JSONL, soft-delete)
+- **service.py** — ChatService со sliding window стратегией
+- **routes.py** — 5 endpoints
+
+### Endpoints
+
+| Метод | URL | Описание |
+|-------|-----|---------|
+| POST | /chats | Создать чат |
+| POST | /chats/{id}/messages | Отправить сообщение |
+| GET | /chats/{id}/messages | История |
+| DELETE | /chats/{id}/messages | Очистить |
+| GET | /chats/{id} | Метаданные |
+
+### Стек
+
+Python, FastAPI, aiofiles, JSONL, Pydantic v2
+
+## ДЗ 4.2: Telegram-бот как тонкий клиент
+
+### Что реализовано
+
+Telegram-бот `@technomarket_shop_bot` на aiogram 3:
+- **BackendClient** — httpx-клиент к FastAPI
+- **Команды** — /start, /help, /clear, /cancel
+- **FSM-сценарий** — /ask → выбор темы → стрим ответа
+- **Inline-клавиатура** — 5 тем
+
+### Архитектура
+
+Пользователь → Telegram → Бот → FastAPI → OpenAI
+
+### Стек
+
+Python, aiogram 3, httpx, FSM, MemoryStorage
+
+## ДЗ 4.3: Мультимодальность
+
+### Результаты
+
+- 📸 Фото → Vision API ✅
+- 🎤 Голос → ffmpeg → Whisper-1 ✅
+- 📄 PDF/DOCX → извлечение текста ✅
+
+### Стек
+
+Python, FastAPI multipart, OpenAI Vision API, Whisper-1, ffmpeg
+
+## ДЗ 4.4: RAG — база знаний магазина
+
+### Что реализовано
+
+- **knowledge_base/technomarket.md** — каталог, цены, доставка, оплата, гарантия
+- **indexer.py** — 10 чанков в ChromaDB
+- **retriever.py** — поиск top-K чанков
+- **ChatService** — RAG-контекст автоматически в каждом запросе
+
+### Результаты
+
+❓ Сколько стоит iPhone 15 128GB?
+💬 iPhone 15 128GB стоит 89 990 руб.
+
+### Стек
+
+Python, ChromaDB, LangChain, OpenAI text-embedding-3-small
+
+## ДЗ 5.1: Эмбеддинги и семантический поиск
+
+### Результаты семантического поиска
+
+| Запрос | Найденный FAQ | Score |
+|--------|--------------|-------|
+| "хочу вернуть покупку" | "Как вернуть товар?" | 0.634 |
+| "чем можно заплатить" | "Какие способы оплаты?" | 0.623 |
+| "когда привезут заказ" | "Как отследить заказ?" | 0.610 |
+
+### Стек
+
+Python, OpenAI text-embedding-3-small, numpy, scikit-learn, KMeans
+
+## ДЗ 5.2: Векторные базы данных — Qdrant
+
+### Что реализовано
+
+- **Qdrant в docker-compose** — qdrant/qdrant:v1.14.0 с named volume
+- **VectorStore** (`app/services/vector_store.py`) — async обёртка
+- **54 документа** в коллекции `documents`
+- **Cosine vs Dot** — все 5 запросов совпали (OpenAI нормализует векторы)
+
+### Результаты
+
+```
+python scripts/load_to_qdrant.py → ✅ Точек в коллекции: 54
+python scripts/embeddings/cosine_vs_dot.py → ✅ Все результаты совпали!
+```
+
+### Стек
+
+Python, Qdrant, AsyncQdrantClient, Docker
+
+## ДЗ 5.3: Архитектура RAG с LlamaIndex
+
+### Что реализовано
+
+- **10 документов** в `data/rag-block-03/`
+- **`app/services/rag.py`** — RAG на LlamaIndex (на момент этого ДЗ; впоследствии код `rag.py` был переписан под ДЗ 5.5/5.6 на сырой Qdrant + OpenAI SDK — см. раздел про архитектуру ниже)
+- **`app/services/rag_baremetal.py`** — тот же RAG без фреймворка
+- **`POST /rag/query`** — FastAPI endpoint
+- **Fallback** — если top_score < 0.35
+
+### LlamaIndex vs Bare-metal
+
+| Критерий | LlamaIndex | Bare-metal |
+|----------|-----------|------------|
+| Строк кода | ~30 | ~80 |
+| Форматы из коробки | PDF/DOCX/MD | Только MD |
+| Async | Частичная | Полная |
+
+### Стек
+
+Python, LlamaIndex, VectorStoreIndex, FastAPI
+
+## ДЗ 5.5: Корпоративный RAG-ассистент
 
 ### Что реализовано
 - **45 документов** в `data/` — 4 категории: catalog, policies, support, guides
