@@ -1,123 +1,126 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 
 load_dotenv(".env_robust_23")
 
-from llama_index.core import (
-    SimpleDirectoryReader,
-    VectorStoreIndex,
-    StorageContext,
-    Settings,
-    load_index_from_storage,
-)
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.llms.openai import OpenAI
+from openai import AsyncOpenAI
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-COLLECTION_NAME = os.getenv("RAG_COLLECTION", "rag_block_03")
-DATA_DIR = "data/rag-block-03"
-CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "512"))
-CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "64"))
-SIMILARITY_TOP_K = int(os.getenv("RAG_SIMILARITY_TOP_K", "3"))
-PERSIST_DIR = f"./var/llama_index_{COLLECTION_NAME}"
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+COLLECTION_NAME = os.getenv("RAG_COLLECTION", "technomarket_v2")
+SIMILARITY_TOP_K = int(os.getenv("RAG_SIMILARITY_TOP_K", "5"))
+SCORE_THRESHOLD = float(os.getenv("RAG_SCORE_THRESHOLD", "0.30"))
 
-Settings.llm = OpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
-Settings.embed_model = OpenAIEmbedding(
-    model="text-embedding-3-small",
-    api_key=OPENAI_API_KEY,
-)
-Settings.node_parser = SentenceSplitter(
-    chunk_size=CHUNK_SIZE,
-    chunk_overlap=CHUNK_OVERLAP,
-)
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+qdrant_client = AsyncQdrantClient(url=QDRANT_URL)
+
+SYSTEM_PROMPT = """Ты — ИИ-консультант интернет-магазина ТехноМаркет.
+Отвечай ТОЛЬКО на основе предоставленного контекста.
+При отсутствии информации в контексте пиши: "по базе не нашёл, могу эскалировать".
+Цитируй источники в формате [1], [2] в тексте ответа.
+Отвечай на русском языке, кратко и по делу."""
 
 
-class RAGService:
-    def __init__(self):
-        self.index = None
-        self.query_engine = None
+async def embed_text(text: str) -> list[float]:
+    response = await openai_client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text,
+    )
+    return response.data[0].embedding
 
-    def build(self):
-        if os.path.exists(PERSIST_DIR):
-            print(f"Загружаем индекс из {PERSIST_DIR}...")
-            storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
-            self.index = load_index_from_storage(storage_context)
-        else:
-            print(f"Индексируем из {DATA_DIR}...")
-            documents = SimpleDirectoryReader(
-                input_dir=DATA_DIR,
-                recursive=True,
-            ).load_data()
-            print(f"  Загружено {len(documents)} документов")
-            self.index = VectorStoreIndex.from_documents(
-                documents,
-                show_progress=True,
-            )
-            self.index.storage_context.persist(persist_dir=PERSIST_DIR)
-            print(f"Индексация завершена!")
 
-        self.query_engine = self.index.as_query_engine(
-            similarity_top_k=SIMILARITY_TOP_K,
+async def answer(question: str, category: str | None = None) -> dict:
+    """RAG-запрос с цитированием и score-guard."""
+
+    # 1. Эмбеддинг вопроса
+    query_emb = await embed_text(question)
+
+    # 2. Поиск в Qdrant с опциональным фильтром по категории
+    query_filter = None
+    if category:
+        query_filter = Filter(
+            must=[FieldCondition(key="category", match=MatchValue(value=category))]
         )
 
-    def answer(self, question: str) -> dict:
-        if not self.query_engine:
-            raise RuntimeError("RAG не инициализирован.")
+    results = await qdrant_client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_emb,
+        limit=SIMILARITY_TOP_K,
+        with_payload=True,
+        query_filter=query_filter,
+    )
 
-        response = self.query_engine.query(question)
+    # 3. Score-guard
+    sources = []
+    top_score = 0.0
+    for point in results.points:
+        score = point.score or 0.0
+        if score > top_score:
+            top_score = score
+        sources.append({
+            "id": str(point.id),
+            "file_name": point.payload.get("source", "unknown"),
+            "category": point.payload.get("category", "general"),
+            "score": round(score, 3),
+            "snippet": point.payload.get("text", "")[:200],
+        })
 
-        sources = []
-        top_score = 0.0
-        for node in response.source_nodes:
-            score = node.score or 0.0
-            if score > top_score:
-                top_score = score
-            sources.append({
-                "text": node.text[:300],
-                "source": node.metadata.get("file_name", "unknown"),
-                "score": round(score, 3),
-            })
+    confident = top_score >= SCORE_THRESHOLD
 
-        # Fallback если score низкий
-        FALLBACK_THRESHOLD = 0.35
-        if top_score < FALLBACK_THRESHOLD:
-            return {
-                "answer": "К сожалению, не нашёл информации по этому вопросу в базе знаний магазина.",
-                "top_score": round(top_score, 3),
-                "sources": sources,
-                "fallback": True,
-            }
-
+    if not confident:
         return {
-            "answer": str(response),
+            "answer": "по базе не нашёл, могу эскалировать",
             "top_score": round(top_score, 3),
+            "confident": False,
             "sources": sources,
-            "fallback": False,
         }
+
+    # 4. Формируем контекст с нумерацией для цитирования
+    context_parts = []
+    for i, s in enumerate(sources, 1):
+        context_parts.append(f"[{i}] {s['snippet']}")
+    context = "\n\n".join(context_parts)
+
+    # 5. Генерация ответа с цитатами
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nКонтекст:\n{context}"},
+            {"role": "user", "content": question},
+        ],
+        temperature=0,
+    )
+
+    return {
+        "answer": response.choices[0].message.content,
+        "top_score": round(top_score, 3),
+        "confident": True,
+        "sources": sources,
+    }
 
 
 if __name__ == "__main__":
-    service = RAGService()
-    service.build()
-
     questions = [
         "Сколько стоит iPhone 15 128GB?",
         "Как оформить рассрочку?",
         "Какой кэшбэк на уровне Золото?",
-        "Нужны ли документы для гарантийного ремонта?",
-        "Как работают квантовые компьютеры?",
+        "Какие игровые ноутбуки есть в наличии?",
+        "Какая погода в Москве?",
     ]
 
-    print("\n" + "=" * 60)
-    print("  Прогон 5 вопросов")
-    print("=" * 60)
+    async def main():
+        print("=" * 60)
+        print("  RAG-консультант ТехноМаркет v2")
+        print("=" * 60)
+        for q in questions:
+            print(f"\n❓ {q}")
+            result = await answer(q)
+            print(f"💬 {result['answer'][:200]}")
+            print(f"📊 top_score: {result['top_score']} | confident: {result['confident']}")
+            if result.get("fallback") or not result["confident"]:
+                print("⚠️ FALLBACK сработал!")
 
-    for q in questions:
-        print(f"\n❓ {q}")
-        result = service.answer(q)
-        print(f"💬 {result['answer'][:200]}")
-        print(f"📊 top_score: {result['top_score']}")
-        if result.get('fallback'):
-            print(f"⚠️ FALLBACK сработал!")
-        print(f"📚 Источники: {[s['source'] for s in result['sources']]}")
+    asyncio.run(main())
