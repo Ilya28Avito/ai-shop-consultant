@@ -1028,3 +1028,33 @@ OpenAI Chat Completions (`gpt-5.4-mini` / `gpt-5.4` на ревизии), functi
 
 ### Выводы
 ReAct-обвязка с лимитами уже окупается как страховка от конкретной ошибки faithfulness и как источник аудируемости (`thought` и `critic_verdict` в каждом шаге трейса), но самый дорогой её компонент — сам self-reflection-цикл — на 5 задачах домена не набрал ни одного случая реальной необходимости. Оба жёстких лимита (`max_iterations`, `timeout_per_iteration_sec`) в этих прогонах не были естественно достигнуты — задачи укладывались в 1–3 шага; для эмпирической проверки этих веток нужен отдельный стресс-тест.
+
+---
+
+## ДЗ 6.3: LangGraph — основы
+
+### Что реализовано
+- **`app/services/agent_graph.py`** — тот же ReAct-агент из ДЗ 6.2, переписанный на LangGraph 1.x (`langgraph>=1.0,<2`, `langchain>=1.0,<2`): явный `AgentState(TypedDict)` с reducer'ами (`add_messages` для истории, `operator.add` для накопления `tool_results`), три чистых async-узла (`call_model`, `execute_tool`, `force_finish`), router (`route_after_model`) — отдельная детерминированная функция без сайд-эффектов
+- **Два независимо вызываемых графа, решающих одну задачу разными путями**: `custom_graph` (StateGraph собран руками — `add_node`/`add_conditional_edges`) и `prebuilt_graph` (через `langchain.agents.create_agent`)
+- **Те же 3 tools из ДЗ 6.2**, перенесены через `@tool`-декоратор `langchain_core.tools` без дублирования описаний — один и тот же tool идёт в оба графа
+- **`scripts/visualize_graph.py`** — сохраняет mermaid-схемы обоих графов ([`docs/agent-graph-custom.mmd`](docs/agent-graph-custom.mmd), [`docs/agent-graph-prebuilt.mmd`](docs/agent-graph-prebuilt.mmd)) + PNG
+- **`scripts/verify_force_finish.py`** — двухчастная проверка стоп-крана: реальный прогон против намеренно сломанного `search_knowledge_base` (модель честно сдаётся раньше лимита сама — стоп-кран не потребовался) + прямой юнит-тест `route_after_model`/`force_finish` с синтетическим state на `iteration_count == MAX_ITERATIONS`, детерминированно подтверждающий сам механизм
+- **`scripts/bench_agents.py`** — бенчмарк 5 задач × 3 реализации (`agent_naive.py`, `custom_graph`, `prebuilt_graph`) × 3 повтора, latency + токены + число LLM-вызовов, усреднено
+- Полный разбор — [`docs/agent-graph-report.md`](docs/agent-graph-report.md): конфигурация, state contract, router-логика, mermaid-схема, таблица бенчмарка, custom vs prebuilt, найденный баг, что блокирует переход к персистентности
+
+### Результаты бенчмарка (5 задач, сумма по всем)
+
+| Реализация | Суммарная latency | Суммарно токенов | Всего LLM-вызовов |
+|---|---|---|---|
+| `agent_naive.py` (loop-baseline) | 9 119 мс | 5 894 | 10 |
+| `custom_graph` | 11 878 мс | 6 286 | 11 |
+| `prebuilt_graph` | 11 824 мс | 7 557 | 11 |
+
+### Ключевая находка
+На составной задаче (поиск гарантии → отправка в Telegram) `naive` неожиданно уложился в 2 LLM-вызова вместо 3 — модель сама объединила `search_knowledge_base` и `send_telegram_message` в один parallel tool_call, потому что system prompt `agent_naive.py` это не запрещает. У `custom_graph`/`prebuilt_graph` system prompt явно требует "не более одного инструмента за шаг" (сознательное решение для этого ДЗ), поэтому оба графа стабильно взяли 3 шага. Итог: разница в latency между naive и графами на этой задаче — не преимущество императивного цикла над графом, а разница в system prompt и везение с параллелизацией модели. `prebuilt_graph` при этом стабильно тратит больше `prompt_tokens`, чем `custom_graph`, почти на каждой задаче — вероятно, `create_agent` добавляет свой форматирующий оверхед, недоступный для прямого контроля.
+
+### Стек
+LangGraph 1.2.11, LangChain 1.3.18, langchain-openai 1.6.0, `gpt-5.4-mini`, `AsyncSqliteSaver`-совместимый state (пока без подключённого checkpointer)
+
+### Выводы
+Граф не добавляет новых возможностей поверх голого цикла сам по себе — обе формы одинаково решают одни и те же 5 задач. Ценность появляется в другом: явный `AgentState` без SDK-клиентов и API-ключей уже готов к чекпойнтингу (`AsyncSqliteSaver`/`AsyncPostgresSaver`) без переписывания структуры, router как отдельная функция делает stop-condition проверяемой юнит-тестом независимо от LLM (что и потребовалось на практике — реальный прогон против сломанного tool не смог детерминированно проверить лимит итераций, а прямой вызов `route_after_model` смог), а mermaid-схема делает граф самодокументируемым. `custom_graph` дешевле `prebuilt_graph` по токенам почти везде ценой ~120 строк ручного кода — для доклада: писать граф руками оправдано, когда важен контроль над каждым узлом и стоимостью; `create_agent` окупается скоростью старта на простых сценариях без кастомизации.

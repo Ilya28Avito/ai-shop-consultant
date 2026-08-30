@@ -1,0 +1,512 @@
+{
+  "1_simple_warranty": {
+    "task_text": "Какая гарантия на смартфоны в ТехноМаркет?",
+    "type": "простая (1 tool)",
+    "impls": {
+      "naive": {
+        "runs": [
+          {
+            "latency_ms": 2043.5,
+            "prompt_tokens": 1092,
+            "completion_tokens": 75,
+            "total_tokens": 1167,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1719.5,
+            "prompt_tokens": 1087,
+            "completion_tokens": 84,
+            "total_tokens": 1171,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1937.3,
+            "prompt_tokens": 1087,
+            "completion_tokens": 93,
+            "total_tokens": 1180,
+            "total_steps": 2
+          }
+        ],
+        "avg": {
+          "latency_ms": 1900.1,
+          "prompt_tokens": 1088.7,
+          "completion_tokens": 84.0,
+          "total_tokens": 1172.7,
+          "total_steps": 2.0
+        }
+      },
+      "custom": {
+        "runs": [
+          {
+            "latency_ms": 2324.0,
+            "prompt_tokens": 1074,
+            "completion_tokens": 107,
+            "total_tokens": 1181,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 4135.9,
+            "prompt_tokens": 1079,
+            "completion_tokens": 144,
+            "total_tokens": 1223,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 2712.1,
+            "prompt_tokens": 1074,
+            "completion_tokens": 116,
+            "total_tokens": 1190,
+            "total_steps": 2
+          }
+        ],
+        "avg": {
+          "latency_ms": 3057.3,
+          "prompt_tokens": 1075.7,
+          "completion_tokens": 122.3,
+          "total_tokens": 1198.0,
+          "total_steps": 2.0
+        }
+      },
+      "prebuilt": {
+        "runs": [
+          {
+            "latency_ms": 2953.5,
+            "prompt_tokens": 1314,
+            "completion_tokens": 135,
+            "total_tokens": 1449,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 2721.6,
+            "prompt_tokens": 1308,
+            "completion_tokens": 124,
+            "total_tokens": 1432,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 3026.9,
+            "prompt_tokens": 1308,
+            "completion_tokens": 148,
+            "total_tokens": 1456,
+            "total_steps": 2
+          }
+        ],
+        "avg": {
+          "latency_ms": 2900.7,
+          "prompt_tokens": 1310.0,
+          "completion_tokens": 135.7,
+          "total_tokens": 1445.7,
+          "total_steps": 2.0
+        }
+      }
+    }
+  },
+  "2_simple_time": {
+    "task_text": "Который час сейчас в Москве?",
+    "type": "простая (1 tool)",
+    "impls": {
+      "naive": {
+        "runs": [
+          {
+            "latency_ms": 1778.6,
+            "prompt_tokens": 1063,
+            "completion_tokens": 35,
+            "total_tokens": 1098,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1507.8,
+            "prompt_tokens": 1063,
+            "completion_tokens": 35,
+            "total_tokens": 1098,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1772.2,
+            "prompt_tokens": 1063,
+            "completion_tokens": 40,
+            "total_tokens": 1103,
+            "total_steps": 2
+          }
+        ],
+        "avg": {
+          "latency_ms": 1686.2,
+          "prompt_tokens": 1063.0,
+          "completion_tokens": 36.7,
+          "total_tokens": 1099.7,
+          "total_steps": 2.0
+        }
+      },
+      "custom": {
+        "runs": [
+          {
+            "latency_ms": 1644.2,
+            "prompt_tokens": 919,
+            "completion_tokens": 33,
+            "total_tokens": 952,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1297.3,
+            "prompt_tokens": 919,
+            "completion_tokens": 33,
+            "total_tokens": 952,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1384.2,
+            "prompt_tokens": 919,
+            "completion_tokens": 35,
+            "total_tokens": 954,
+            "total_steps": 2
+          }
+        ],
+        "avg": {
+          "latency_ms": 1441.9,
+          "prompt_tokens": 919.0,
+          "completion_tokens": 33.7,
+          "total_tokens": 952.7,
+          "total_steps": 2.0
+        }
+      },
+      "prebuilt": {
+        "runs": [
+          {
+            "latency_ms": 1255.2,
+            "prompt_tokens": 1153,
+            "completion_tokens": 32,
+            "total_tokens": 1185,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1384.4,
+            "prompt_tokens": 1147,
+            "completion_tokens": 28,
+            "total_tokens": 1175,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1332.3,
+            "prompt_tokens": 1153,
+            "completion_tokens": 32,
+            "total_tokens": 1185,
+            "total_steps": 2
+          }
+        ],
+        "avg": {
+          "latency_ms": 1324.0,
+          "prompt_tokens": 1151.0,
+          "completion_tokens": 30.7,
+          "total_tokens": 1181.7,
+          "total_steps": 2.0
+        }
+      }
+    }
+  },
+  "3_composability_search_send": {
+    "task_text": "Найди в базе знаний условия гарантии на технику и отправь их клиенту в чат 222",
+    "type": "составная (search -> send)",
+    "impls": {
+      "naive": {
+        "runs": [
+          {
+            "latency_ms": 2053.4,
+            "prompt_tokens": 1098,
+            "completion_tokens": 112,
+            "total_tokens": 1210,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 1730.4,
+            "prompt_tokens": 1098,
+            "completion_tokens": 91,
+            "total_tokens": 1189,
+            "total_steps": 2
+          },
+          {
+            "latency_ms": 2702.5,
+            "prompt_tokens": 1098,
+            "completion_tokens": 138,
+            "total_tokens": 1236,
+            "total_steps": 2
+          }
+        ],
+        "avg": {
+          "latency_ms": 2162.1,
+          "prompt_tokens": 1098.0,
+          "completion_tokens": 113.7,
+          "total_tokens": 1211.7,
+          "total_steps": 2.0
+        }
+      },
+      "custom": {
+        "runs": [
+          {
+            "latency_ms": 3547.3,
+            "prompt_tokens": 1824,
+            "completion_tokens": 201,
+            "total_tokens": 2025,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 3382.4,
+            "prompt_tokens": 1810,
+            "completion_tokens": 184,
+            "total_tokens": 1994,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 3547.7,
+            "prompt_tokens": 1810,
+            "completion_tokens": 184,
+            "total_tokens": 1994,
+            "total_steps": 3
+          }
+        ],
+        "avg": {
+          "latency_ms": 3492.5,
+          "prompt_tokens": 1814.7,
+          "completion_tokens": 189.7,
+          "total_tokens": 2004.3,
+          "total_steps": 3.0
+        }
+      },
+      "prebuilt": {
+        "runs": [
+          {
+            "latency_ms": 3818.5,
+            "prompt_tokens": 2161,
+            "completion_tokens": 184,
+            "total_tokens": 2345,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 3860.6,
+            "prompt_tokens": 2161,
+            "completion_tokens": 184,
+            "total_tokens": 2345,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 3667.9,
+            "prompt_tokens": 2167,
+            "completion_tokens": 193,
+            "total_tokens": 2360,
+            "total_steps": 3
+          }
+        ],
+        "avg": {
+          "latency_ms": 3782.3,
+          "prompt_tokens": 2163.0,
+          "completion_tokens": 187.0,
+          "total_tokens": 2350.0,
+          "total_steps": 3.0
+        }
+      }
+    }
+  },
+  "4_composability_time_send": {
+    "task_text": "Узнай текущее время в Москве и отправь клиенту в чат 333 сообщение, что его заказ принят в обработку в это время",
+    "type": "составная (time -> send)",
+    "impls": {
+      "naive": {
+        "runs": [
+          {
+            "latency_ms": 2504.5,
+            "prompt_tokens": 1753,
+            "completion_tokens": 103,
+            "total_tokens": 1856,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 2576.1,
+            "prompt_tokens": 1755,
+            "completion_tokens": 104,
+            "total_tokens": 1859,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 2229.5,
+            "prompt_tokens": 1756,
+            "completion_tokens": 84,
+            "total_tokens": 1840,
+            "total_steps": 3
+          }
+        ],
+        "avg": {
+          "latency_ms": 2436.7,
+          "prompt_tokens": 1754.7,
+          "completion_tokens": 97.0,
+          "total_tokens": 1851.7,
+          "total_steps": 3.0
+        }
+      },
+      "custom": {
+        "runs": [
+          {
+            "latency_ms": 2851.2,
+            "prompt_tokens": 1525,
+            "completion_tokens": 96,
+            "total_tokens": 1621,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 2691.7,
+            "prompt_tokens": 1539,
+            "completion_tokens": 104,
+            "total_tokens": 1643,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 2656.8,
+            "prompt_tokens": 1535,
+            "completion_tokens": 98,
+            "total_tokens": 1633,
+            "total_steps": 3
+          }
+        ],
+        "avg": {
+          "latency_ms": 2733.2,
+          "prompt_tokens": 1533.0,
+          "completion_tokens": 99.3,
+          "total_tokens": 1632.3,
+          "total_steps": 3.0
+        }
+      },
+      "prebuilt": {
+        "runs": [
+          {
+            "latency_ms": 2865.4,
+            "prompt_tokens": 1876,
+            "completion_tokens": 105,
+            "total_tokens": 1981,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 2762.6,
+            "prompt_tokens": 1888,
+            "completion_tokens": 102,
+            "total_tokens": 1990,
+            "total_steps": 3
+          },
+          {
+            "latency_ms": 3165.7,
+            "prompt_tokens": 1890,
+            "completion_tokens": 104,
+            "total_tokens": 1994,
+            "total_steps": 3
+          }
+        ],
+        "avg": {
+          "latency_ms": 2931.2,
+          "prompt_tokens": 1884.7,
+          "completion_tokens": 103.7,
+          "total_tokens": 1988.3,
+          "total_steps": 3.0
+        }
+      }
+    }
+  },
+  "5_provocative_no_tool": {
+    "task_text": "Если товар стоит 12000 рублей, а скидка 15%, сколько будет цена со скидкой?",
+    "type": "провокационная (tool не нужен)",
+    "impls": {
+      "naive": {
+        "runs": [
+          {
+            "latency_ms": 1134.0,
+            "prompt_tokens": 519,
+            "completion_tokens": 50,
+            "total_tokens": 569,
+            "total_steps": 1
+          },
+          {
+            "latency_ms": 856.3,
+            "prompt_tokens": 519,
+            "completion_tokens": 34,
+            "total_tokens": 553,
+            "total_steps": 1
+          },
+          {
+            "latency_ms": 810.9,
+            "prompt_tokens": 519,
+            "completion_tokens": 34,
+            "total_tokens": 553,
+            "total_steps": 1
+          }
+        ],
+        "avg": {
+          "latency_ms": 933.7,
+          "prompt_tokens": 519.0,
+          "completion_tokens": 39.3,
+          "total_tokens": 558.3,
+          "total_steps": 1.0
+        }
+      },
+      "custom": {
+        "runs": [
+          {
+            "latency_ms": 1586.6,
+            "prompt_tokens": 447,
+            "completion_tokens": 52,
+            "total_tokens": 499,
+            "total_steps": 1
+          },
+          {
+            "latency_ms": 905.3,
+            "prompt_tokens": 447,
+            "completion_tokens": 52,
+            "total_tokens": 499,
+            "total_steps": 1
+          },
+          {
+            "latency_ms": 966.8,
+            "prompt_tokens": 447,
+            "completion_tokens": 52,
+            "total_tokens": 499,
+            "total_steps": 1
+          }
+        ],
+        "avg": {
+          "latency_ms": 1152.9,
+          "prompt_tokens": 447.0,
+          "completion_tokens": 52.0,
+          "total_tokens": 499.0,
+          "total_steps": 1.0
+        }
+      },
+      "prebuilt": {
+        "runs": [
+          {
+            "latency_ms": 814.2,
+            "prompt_tokens": 564,
+            "completion_tokens": 34,
+            "total_tokens": 598,
+            "total_steps": 1
+          },
+          {
+            "latency_ms": 921.8,
+            "prompt_tokens": 564,
+            "completion_tokens": 15,
+            "total_tokens": 579,
+            "total_steps": 1
+          },
+          {
+            "latency_ms": 921.5,
+            "prompt_tokens": 564,
+            "completion_tokens": 34,
+            "total_tokens": 598,
+            "total_steps": 1
+          }
+        ],
+        "avg": {
+          "latency_ms": 885.8,
+          "prompt_tokens": 564.0,
+          "completion_tokens": 27.7,
+          "total_tokens": 591.7,
+          "total_steps": 1.0
+        }
+      }
+    }
+  }
+}
