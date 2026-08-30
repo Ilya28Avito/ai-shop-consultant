@@ -1058,3 +1058,34 @@ LangGraph 1.2.11, LangChain 1.3.18, langchain-openai 1.6.0, `gpt-5.4-mini`, `Asy
 
 ### Выводы
 Граф не добавляет новых возможностей поверх голого цикла сам по себе — обе формы одинаково решают одни и те же 5 задач. Ценность появляется в другом: явный `AgentState` без SDK-клиентов и API-ключей уже готов к чекпойнтингу (`AsyncSqliteSaver`/`AsyncPostgresSaver`) без переписывания структуры, router как отдельная функция делает stop-condition проверяемой юнит-тестом независимо от LLM (что и потребовалось на практике — реальный прогон против сломанного tool не смог детерминированно проверить лимит итераций, а прямой вызов `route_after_model` смог), а mermaid-схема делает граф самодокументируемым. `custom_graph` дешевле `prebuilt_graph` по токенам почти везде ценой ~120 строк ручного кода — для доклада: писать граф руками оправдано, когда важен контроль над каждым узлом и стоимостью; `create_agent` окупается скоростью старта на простых сценариях без кастомизации.
+
+## ДЗ 6.4: LangGraph — продвинутые паттерны (персистентность, HIL, стриминг)
+
+### Что реализовано
+- **`app/services/agent_persistent.py`** — отдельный граф поверх тех же 3 tools, что и в `agent_graph.py` (ДЗ 6.3, не изменён): переключаемый checkpointer через `AGENT_CHECKPOINTER=memory|sqlite|postgres` (`agent_lifespan()`, `checkpointer.setup()` вызывается ровно один раз при старте приложения, не на каждый запрос), `build_initial_state()` — единственная точка сборки state нового треда
+- **Human-in-the-loop на `send_telegram_message`** (единственный необратимый tool) через `interrupt()` + `Command(resume=...)` — НЕ через устаревшие `interrupt_before`/`interrupt_after`: два отдельных узла, `prepare_send_telegram` (идемпотентный, только рендер превью) и `confirm_and_execute_send_telegram` (реальный side-effect строго ПОСЛЕ `interrupt()`, чтобы replay на resume не отправлял сообщение повторно)
+- **`app/routers/agent.py`** — `POST /agent/stream`, SSE через `graph.astream(stream_mode=["updates", "messages"])`: прогресс по узлам, токены модели, отдельное событие на `__interrupt__`; `config["configurable"]` несёт `thread_id` (стабильный, не `uuid4()` за запрос) и `user_role` (концепция уровня доступа, пока не enforced — см. отчёт)
+- **`scripts/time_travel_demo.py`** — офлайн на `AsyncSqliteSaver(":memory:")`: payload `interrupt()`, история чекпоинтов (`aget_state_history`), чтение прошлого состояния по `checkpoint_id`, и **два разных исхода (approve/reject) на двух разных `thread_id`** — resume одного и того же checkpoint'а детерминирован, повторным resume с другим значением второй исход не получить
+- **`tests/test_agent_persistent.py`** — 3 smoke-теста на `sqlite(":memory:")` с замоканной моделью: остановка на interrupt, `resume=True` → `sent=True` + side-effect вызван 1 раз, `resume=False` → `sent=False` + side-effect не вызван вообще
+- **Postgres** поднят с нуля в `compose.yaml` (раньше в проекте не был настроен, вопреки предположению задания про переиспользование блока "М3Б5") — сервис `postgres:16-alpine`, healthcheck, volume
+- Полный разбор — [`docs/agent-persistent-report.md`](docs/agent-persistent-report.md): backend по режимам, Postgres `\dt`-подтверждение, идемпотентность HIL, реальные SSE-логи, time-travel вывод, обоснование `stream_mode`, оба найденных бага
+
+### Результаты проверки (все — реальные прогоны, не синтетика)
+| Проверка | Результат |
+|---|---|
+| `pytest tests/test_agent_persistent.py` | 3 passed |
+| SSE: `interrupt()` на новом `thread_id` | сработал стабильно, payload корректный |
+| SSE: `resume=true` | side-effect (`[TELEGRAM → 555] ...`) выполнился ровно 1 раз |
+| `time_travel_demo.py`, approve-ветка | `sent=True`, реальная "отправка" в логе |
+| `time_travel_demo.py`, reject-ветка | `sent=False`, отправки не было |
+| Postgres `AGENT_CHECKPOINTER=postgres`, `\dt` | 4 таблицы (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations`) |
+
+### Найденные баги
+1. **`SYSTEM_PROMPT` был объявлен, но нигде не подставлялся в `messages`** — ни в CLI, ни в роутере. Граф работал без системного промпта, из-за чего HIL срабатывал непоследовательно (то `interrupt()` срабатывал, то модель просто спрашивала подтверждение текстом). Найдено эмпирически — двумя подряд неудачными SSE-тестами. Исправлено: единственная точка входа `build_initial_state()`.
+2. **`AsyncPostgresSaver` несовместим с `ProactorEventLoop`** (дефолт asyncio на Windows) — `psycopg.InterfaceError` при первой же попытке подключения. Известная, задокументированная в самом psycopg несовместимость, не баг проекта. Исправлено переключением на `WindowsSelectorEventLoopPolicy()` при импорте модуля, если `sys.platform == "win32"`. В Docker (Linux) эта ветка не выполняется и баг не воспроизводится в принципе.
+
+### Стек
+LangGraph 1.2.11, langgraph-checkpoint-sqlite 3.1.1, langgraph-checkpoint-postgres 3.1.2, psycopg 3.3.4, `gpt-5.4-mini`, PostgreSQL 16 (Docker)
+
+### Выводы
+Персистентность и HIL в LangGraph 1.x — это не пара вызовов API поверх готового графа, а требование к дисциплине дизайна узлов: идемпотентность "до interrupt" и side-effect строго "после" — не самодокументирующееся правило, легко нарушить случайно (как чуть не произошло с изначальной сборкой `confirm_and_execute_send_telegram`, где порядок был выдержан правильно, но соседний баг с отсутствующим системным промптом маскировал, что HIL вообще работает штатно). Обе находки этого ДЗ — не про сам LangGraph, а про интеграционные швы вокруг него: пропущенный шаг подстановки промпта и платформенная несовместимость сетевой библиотеки — типичный класс багов, который не ловится чтением кода узлов, только сквозным прогоном сценария на реальном API. Test-suite на `sqlite(":memory:")` с замоканной моделью при этом остаётся быстрым и дешёвым способом закрепить именно логику HIL (interrupt/resume/идемпотентность) отдельно от поведения самой модели.

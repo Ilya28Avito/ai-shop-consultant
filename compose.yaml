@@ -12,6 +12,12 @@ services:
       # QDRANT_URL выше). Вне compose (локальный запуск через uvicorn на
       # хосте) в .env_robust_23 нужен http://localhost:6006.
       PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006
+      # ДЗ 6.4 — Postgres для checkpointer'а LangGraph (AGENT_CHECKPOINTER=postgres
+      # в docker-режиме; локально на хосте по умолчанию sqlite — см. .env.example).
+      # Postgres в этом проекте до этого ДЗ не было ни в compose, ни в .env —
+      # заводится с нуля здесь, а не переиспользуется из более раннего блока.
+      POSTGRES_URI: postgresql://ai_shop:ai_shop@postgres:5432/ai_shop
+      AGENT_CHECKPOINTER: postgres
     depends_on:
       redis:
         condition: service_healthy
@@ -19,6 +25,8 @@ services:
         condition: service_healthy
       phoenix:
         condition: service_started
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
@@ -67,7 +75,32 @@ services:
       PHOENIX_WORKING_DIR: /mnt/data
     restart: unless-stopped
 
+  # ДЗ 6.4 — Postgres для production-режима checkpointer'а LangGraph
+  # (langgraph-checkpoint-postgres, таблицы checkpoints/checkpoint_writes/
+  # checkpoint_blobs/checkpoint_migrations создаются один раз через
+  # await checkpointer.setup() при старте FastAPI, не Alembic'ом — в
+  # проекте нет ORM-моделей/Alembic, поэтому пункт про include_name из
+  # задания здесь неприменим, это отдельно оговорено в отчёте).
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ai_shop
+      POSTGRES_PASSWORD: ai_shop
+      POSTGRES_DB: ai_shop
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_shop -d ai_shop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
 volumes:
   redis_data: {}
   qdrant_storage: {}
   phoenix_data: {}
+  postgres_data: {}

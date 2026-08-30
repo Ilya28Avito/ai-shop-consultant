@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -14,9 +15,11 @@ from app.core.config import get_settings
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError
 from app.observability.logging import setup_logging
 from app.observability.tracing import register_tracing
+from app.routers import agent as agent_router
 from app.routers import chat, health
 from app.chat import routes as chat_routes
 from app.routers import rag as rag_router
+from app.services.agent_persistent import agent_lifespan
 
 setup_logging()
 logger = structlog.get_logger("llm-service")
@@ -49,7 +52,20 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("tracing_disabled", reason="PHOENIX_COLLECTOR_ENDPOINT not set")
 
-    yield
+    # ДЗ 6.4 — checkpointer графа-агента поднимается ровно один раз здесь на
+    # старте приложения (agent_lifespan вызывает checkpointer.setup() внутри
+    # себя один раз, а не на каждый запрос к /agent/stream — это и есть
+    # требование задания). Backend переключается через AGENT_CHECKPOINTER
+    # (memory/sqlite/postgres, см. .env.example).
+    async with agent_lifespan() as agent:
+        app.state.agent = agent
+        logger.info(
+            "agent_persistent_ready",
+            backend=os.getenv("AGENT_CHECKPOINTER", "sqlite"),
+        )
+
+        yield
+
     await app.state.openai.close()
     if app.state.cache:
         await app.state.cache.aclose()
@@ -126,3 +142,4 @@ app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(chat_routes.router)
 app.include_router(rag_router.router)
+app.include_router(agent_router.router)
