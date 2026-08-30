@@ -45,12 +45,28 @@ def build_judge(model: str = DEFAULT_JUDGE_MODEL, provider: str = DEFAULT_JUDGE_
     llm.agenerate()); с синхронным клиентом падает с TypeError
     "Cannot use agenerate() with a synchronous client" на каждой метрике.
     Это отличается от generate_testset.py, где TestsetGenerator использует
-    другой, не async-only путь генерации — там синхронный клиент был ок."""
+    другой, не async-only путь генерации — там синхронный клиент был ок.
+
+    НАЙДЕННЫЙ ПРИ ОТЛАДКЕ БАГ (Блок 6.5, docs/multi-agent-report.md):
+    ragas.llms.llm_factory() создаёт InstructorLLM с дефолтным
+    InstructorModelArgs(max_tokens=1024) — этого хватает для коротких
+    ответов, но Faithfulness.ascore() на более длинном/составном ответе
+    (например, ответ на многошаговый вопрос из нескольких фактов) падает с
+    instructor.v2.core.errors.IncompleteOutputException: "The output is
+    incomplete due to a max_tokens length limit" — судье не хватает лимита
+    токенов даже на структурированный JSON с verdict'ами по каждому
+    statement, не говоря уже о самом content. Поднимаем лимит явно после
+    создания llm — сам llm_factory() не принимает max_tokens напрямую
+    (kwargs уходят в InstructorLLM(..., model_args=InstructorModelArgs())
+    с уже захардкоженным дефолтом, отдельно не переопределяемым при вызове
+    llm_factory)."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise SystemExit("OPENAI_API_KEY не найден — проверь .env_robust_23")
     client = openai.AsyncOpenAI(api_key=api_key)
-    return llm_factory(model, provider=provider, client=client)
+    llm = llm_factory(model, provider=provider, client=client)
+    llm.model_args["max_tokens"] = 4096  # llm.model_args — обычный dict в этой версии ragas, не pydantic-модель
+    return llm
 
 
 def build_embeddings(model: str = DEFAULT_JUDGE_EMBEDDING_MODEL):
