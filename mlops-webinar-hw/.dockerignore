@@ -1,0 +1,10 @@
+.git
+.venv-mlops
+mlruns
+data
+reports
+.dvc
+*.env
+.env*
+**/*token*
+**/*secret*

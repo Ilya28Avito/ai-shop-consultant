@@ -1,0 +1,26 @@
+schema: '2.0'
+stages:
+  train:
+    cmd: python src/train.py
+    deps:
+    - path: data/train.csv
+      hash: md5
+      md5: e0bae983c541b7e39dd7d3988a5c314c
+      size: 16024
+    - path: src/train.py
+      hash: md5
+      md5: c3dfe241ede328b0fbaab73c87689ba3
+      size: 1230
+    params:
+      params.yaml:
+        train.max_depth: 5
+        train.n_estimators: 100
+    outs:
+    - path: metrics.json
+      hash: md5
+      md5: c5d2b3bd6f645442a8fe4be422545050
+      size: 35
+    - path: models/model.pkl
+      hash: md5
+      md5: 359bc46ded077f43543b56c809ce1b74
+      size: 429976

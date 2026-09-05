@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install "dvc[ssh]" pandas numpy scikit-learn pyyaml mlflow evidently
+
+      - name: Configure DVC SSH remote (best-effort)
+        continue-on-error: true
+        env:
+          DVC_SSH_KEY: ${{ secrets.DVC_SSH_KEY }}
+          DVC_REMOTE_HOST: ${{ secrets.DVC_REMOTE_HOST }}
+        run: |
+          if [ -n "$DVC_REMOTE_HOST" ]; then
+            echo "$DVC_SSH_KEY" > /tmp/dvc_key
+            chmod 600 /tmp/dvc_key
+            dvc remote add -d -f sshremote "ssh://$DVC_REMOTE_HOST/data/dvc-storage"
+            dvc remote modify sshremote keyfile /tmp/dvc_key
+          else
+            echo "DVC_REMOTE_HOST не задан — пропускаю (используется локальный remote)."
+          fi
+
+      - name: Start MLflow server
+        run: |
+          nohup mlflow server \
+            --backend-store-uri sqlite:///mlflow.db \
+            --default-artifact-root ./mlruns \
+            --host 0.0.0.0 --port 5000 > mlflow.log 2>&1 &
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000 || true)
+            if [ "$code" = "200" ]; then
+              echo "MLflow готов"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Generate training data and run pipeline
+        run: |
+          python3 scripts/gen_train_data.py
+          dvc repro
+
+      - name: Show metrics
+        run: dvc metrics show
+
+      - name: Generate production batch
+        run: python3 scripts/gen_batch.py
+
+      - name: Data drift gate
+        run: python3 monitor.py
+
+      - name: Build Docker image
+        run: docker build -t ml-service:${{ github.sha }} .
+
+      - name: Smoke-test container
+        run: |
+          docker run -d --name ml-service-smoke --network host \
+            ml-service:${{ github.sha }}
+          for i in $(seq 1 15); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+            if [ "$code" = "200" ]; then
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:8000/health
+          docker logs ml-service-smoke
+          docker rm -f ml-service-smoke
+
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image to GHCR
+        if: github.ref == 'refs/heads/main'
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}/ml-service
+          docker tag ml-service:${{ github.sha }} $IMAGE:${{ github.sha }}
+          docker tag ml-service:${{ github.sha }} $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest

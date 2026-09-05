@@ -1,0 +1,14 @@
+stages:
+  train:
+    cmd: python src/train.py
+    deps:
+      - data/train.csv
+      - src/train.py
+    params:
+      - train.n_estimators
+      - train.max_depth
+    outs:
+      - models/model.pkl
+    metrics:
+      - metrics.json:
+          cache: false
