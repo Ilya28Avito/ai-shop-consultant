@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-05T10:18:21.262649+00:00",
+  "generated_at": "2026-09-05T10:44:13.410091+00:00",
   "git": {
-    "commit": "bb82c64d0b50504d52278f61c2343c2e7a7931a8",
+    "commit": "b9051d5207be6a8a1f84175d903559f72b6667b9",
     "branch": "webinar-mlops-hw",
     "dirty_worktree": true
   },
@@ -11,35 +11,35 @@
       "src/train.py": "md5:c3dfe241ede328b0fbaab73c87689ba3"
     },
     "outs": {
-      "metrics.json": "md5:c5d2b3bd6f645442a8fe4be422545050",
-      "models/model.pkl": "md5:a1642afb9bb5a26438eefed4870a60f1"
+      "metrics.json": "md5:4bac7ea965d8fc64f523b2c19c353fc4",
+      "models/model.pkl": "md5:6b14c6d912de939cd252f85cbed62e2c"
     },
     "params": {
       "train.max_depth": 5,
-      "train.n_estimators": 100
+      "train.n_estimators": 200
     }
   },
   "metrics": {
-    "roc_auc": 0.9000157455518815
+    "roc_auc": 0.9008030231459613
   },
   "mlflow": {
     "registered_model": "credit-model",
-    "version": "1",
+    "version": "2",
     "status": "READY",
-    "run_id": "fe5b3342491147bc825a6f49c15331fb",
+    "run_id": "9e6b54db19fd4be4ad6968650008e009",
     "experiment_id": "1",
     "tracking_uri": "http://localhost:5000",
     "run_metrics": {
-      "roc_auc": 0.9000157455518815
+      "roc_auc": 0.9008030231459613
     },
     "run_params": {
-      "n_estimators": "100",
+      "n_estimators": "200",
       "max_depth": "5"
     },
     "aliases": {
       "production": "1",
-      "staging": "1"
+      "staging": "2"
     }
   },
-  "docker_image": "ghcr.io/<owner>/<repo>/ml-service:bb82c64d0b50504d52278f61c2343c2e7a7931a8"
+  "docker_image": "ghcr.io/<owner>/<repo>/ml-service:b9051d5207be6a8a1f84175d903559f72b6667b9"
 }
